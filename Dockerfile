@@ -1,26 +1,45 @@
-# Usar a imagem oficial do Node.js
-FROM node:18-alpine
+# Etapa 1: Build da aplicação
+FROM node:18-alpine AS builder
 
-# Definir o diretório de trabalho
+# Definir diretório de trabalho
 WORKDIR /app
 
-# Copiar o package.json e package-lock.json
-COPY package*.json ./
+# Copiar arquivos de dependências
+COPY package.json package-lock.json ./
 
-# Instalar as dependências
+# Instalar dependências
 RUN npm ci
 
 # Copiar o restante do código
 COPY . .
 
-# Construir a aplicação
+# Gerar Prisma Client
+RUN npx prisma generate
+
+# Build da aplicação Next.js
 RUN npm run build
+
+# Remover dev dependencies para reduzir o tamanho da imagem
+RUN npm prune --production
+
+# Etapa 2: Executar a aplicação
+FROM node:18-alpine
+
+# Definir diretório de trabalho
+WORKDIR /app
+
+# Copiar apenas as dependências e o build da etapa anterior
+COPY --from=builder /app/package.json ./
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/prisma ./prisma
+# COPY --from=builder /app/public ./public
+
+# Definir a variável de ambiente para produção
+ENV NODE_ENV=production
 
 # Expor a porta da aplicação
 EXPOSE 3000
-
-# Definir a variável de ambiente para produção
-ENV NODE_ENV production
 
 # Comando para iniciar a aplicação
 CMD ["npm", "start"]
